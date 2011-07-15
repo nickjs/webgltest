@@ -18,60 +18,65 @@ points = [
   new THREE.Vector3 0, 0, 0
   new THREE.Vector3 100, 0, 0
   new THREE.Vector3 100, 100, 0
-  # new THREE.Vector3 100, 0, 0
-  # new THREE.Vector3 200, 100, 0
-  # new THREE.Vector3 200, 115, -100
-  # new THREE.Vector3 200, 100, -200
-  # new THREE.Vector3 100, 0, -200
-  # new THREE.Vector3 0, 0, -200
-  # new THREE.Vector3 0, 0, 0
+  new THREE.Vector3 200, 115, -100
+  new THREE.Vector3 200, 100, -200
+  new THREE.Vector3 100, 0, -200
+  new THREE.Vector3 0, 0, -200
+  new THREE.Vector3 0, 0, 0
 ]
 
 line = new THREE.Geometry
 mesh = new THREE.Geometry
 
 spline = new THREE.Spline points
-subs = points.length * 50
+subs =  500
+thickness = 5
 
-localToGlobal = (pos, t, nextT) ->
+addLine = (color, v1, v2) ->
+  bLineMat = new THREE.LineBasicMaterial({ color: color, linewidth: 5 })
+  bGeo = new THREE.Geometry()
+  bGeo.vertices.push(new THREE.Vertex(v1), new THREE.Vertex(v2) )
+  bLine = new THREE.Line(bGeo, bLineMat)
+  scene.addObject(bLine)
+
+frameRotation = (t, nextT) ->
   if not t or not nextT
-    return pos
+    return (pos) ->
+      pos
   
   b = new THREE.Vector3
   b.cross t, nextT
   
-  if b.length() is 0
-    return pos.clone()
-  
   b.normalize()
-  b.addSelf(pos)
   
-  material = new THREE.LineBasicMaterial color: 0x00ff00, opacity: 1, linewidth: 5
-  geo = new THREE.Geometry
-  geo.vertices.push(pos.clone(), b.clone())
-  bline = new THREE.Line geo, material
-  scene.addObject bline
-  
+  r = new THREE.Matrix4
   theta = Math.acos(t.dot(nextT))
   
-  result = pos.clone()
-  r = new THREE.Matrix4
-  r.setRotationAxis(b,theta)
-  r.multiplyVector3(result)
+  r.setRotationAxis(b, theta)
   
-  result
-  
+  return (pos) ->
+    r.multiplyVector3(pos)
+    
+    pos
+
+
 tangentForPoint = (i) ->
-  lastPos = spline.getPoint Math.max(i - 1, 0) / subs
-  lastPos = new THREE.Vector3 lastPos.x, lastPos.y, lastPos.z
+  if i - 1 < 0
+    return null
+  prevPos = spline.getPoint Math.max(i - 1, 0) / subs
+  prevPos = new THREE.Vector3 prevPos.x, prevPos.y, prevPos.z
   nextPos = spline.getPoint Math.min(i + 1, subs) / subs
   nextPos = new THREE.Vector3 nextPos.x, nextPos.y, nextPos.z
   
   tangent = new THREE.Vector3
-  tangent.sub(nextPos, lastPos)
+  tangent.sub(nextPos, prevPos)
   tangent.normalize()
   tangent
+  
 
+prevPos = null
+prevTan = null
+tan = null
 for i in [0..subs]
   index = i / subs
   pos = spline.getPoint index
@@ -80,42 +85,33 @@ for i in [0..subs]
   line.vertices[i] = new THREE.Vertex pos.clone()
   
   if i > 0
-    prevTan = tangentForPoint i - 1
     tan = tangentForPoint i
-  else
-    prevTan = null
-    tan = null
-  
-  mesh.vertices[i*4] = new THREE.Vertex localToGlobal(new THREE.Vector3(pos.x, pos.y - 5, pos.z - 5), prevTan, tan)
-  mesh.vertices[i*4+1] = new THREE.Vertex localToGlobal(new THREE.Vector3(pos.x, pos.y - 5, pos.z + 5), prevTan, tan)
-  mesh.vertices[i*4+2] = new THREE.Vertex localToGlobal(new THREE.Vector3(pos.x, pos.y + 5, pos.z + 5), prevTan, tan)
-  mesh.vertices[i*4+3] = new THREE.Vertex localToGlobal(new THREE.Vector3(pos.x, pos.y + 5, pos.z - 5), prevTan, tan)
-  
-  if i > 0
+    rotate = frameRotation(prevTan, tan)
+    
+    for j in [0..3]
+      vertex = mesh.vertices[(i-1)*4 + j].position.clone().subSelf(prevPos)
+      mesh.vertices[i*4 + j] = new THREE.Vertex rotate(vertex).addSelf(pos)
+      
     mesh.faces.push new THREE.Face4 i*4-4, i*4, i*4+1, i*4-3 #bottom
     mesh.faces.push new THREE.Face4 i*4-3, i*4+1, i*4+2, i*4-2 #right
     mesh.faces.push new THREE.Face4 i*4-2, i*4+2, i*4+3, i*4-1 #top
     mesh.faces.push new THREE.Face4 i*4-1, i*4+3, i*4, i*4-4 #left
+  else
+    mesh.vertices[i*4]   = new THREE.Vertex(new THREE.Vector3(0, -thickness, -thickness).addSelf(pos))
+    mesh.vertices[i*4+1] = new THREE.Vertex(new THREE.Vector3(0, -thickness, thickness).addSelf(pos))
+    mesh.vertices[i*4+2] = new THREE.Vertex(new THREE.Vector3(0, thickness, thickness).addSelf(pos))
+    mesh.vertices[i*4+3] = new THREE.Vertex(new THREE.Vector3(0, thickness, -thickness).addSelf(pos))
   
-  # q = new THREE.Quaternion pos.x, pos.y, pos.z
-  
-  # geometry = new THREE.CubeGeometry 5, 5, 5
-  # mesh = new THREE.Mesh geometry, material
-  
-  # mesh.position.x = pos.x
-  # mesh.position.y = pos.y
-  # mesh.position.z = pos.z
-  
-  # scene.addObject mesh
+  prevPos = pos
+  prevTan = tan
 
 # draw line
-material = new THREE.LineBasicMaterial color: 0xff0000, opacity: 1, linewidth: 5
+material = new THREE.LineBasicMaterial color: 0xff0000, opacity: 1, linewidth: 1
 scene.addObject new THREE.Line line, material
 
 # draw mesh
-mesh.computeCentroids()
 mesh.computeFaceNormals()
-material = new THREE.MeshLambertMaterial color:0xff0000, shading: THREE.SmoothShading, wireframe: yes
+material = new THREE.MeshLambertMaterial color:0xff0000, shading: THREE.SmoothShading, wireframe: no
 scene.addObject new THREE.Mesh mesh, material
 
 renderer = new THREE.WebGLRenderer antialias: true
